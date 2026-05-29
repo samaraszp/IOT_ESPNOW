@@ -1,0 +1,6 @@
+#pip install -r requirements.txt
+fastapi
+uvicorn
+pyserial
+influxdb-client
+python-dotenv

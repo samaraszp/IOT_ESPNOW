@@ -11,8 +11,8 @@
 #define CLK_PIN   12 // SCK
 #define CS_PIN    10 // SS
 
-#define LED_VERDE 4    
-#define LED_VERMELHO 5 
+#define led_verde 4    
+#define led_vermelho 5 
 
 MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 
@@ -56,8 +56,8 @@ void OnDataRecv(const esp_now_recv_info_t *recvInfo, const uint8_t *incomingData
         Serial.println("LED VERDE ON – dados recebidos"); [cite: 173]
     }
     
-    digitalWrite(LED_VERDE, HIGH); [cite: 143, 191]
-    digitalWrite(LED_VERMELHO, LOW); [cite: 191]
+    digitalWrite(led_verde, HIGH); [cite: 143, 191]
+    digitalWrite(led_vermelho, LOW); [cite: 191]
     
     // Log de Recepção Exato do Edital
     Serial.printf("RX: nivel=%.0f%% temp=%.0fC umd=%.0f%% lux=%d prs=%d ts=%s\n", 
@@ -74,12 +74,12 @@ void OnDataRecv(const esp_now_recv_info_t *recvInfo, const uint8_t *incomingData
 
 void setup() {
     Serial.begin(115200);
-    pinMode(LED_VERDE, OUTPUT);
-    pinMode(LED_VERMELHO, OUTPUT);
+    pinMode(led_verde, OUTPUT);
+    pinMode(led_vermelho, OUTPUT);
     
     // Estado de Alerta Inicial
-    digitalWrite(LED_VERDE, LOW);
-    digitalWrite(LED_VERMELHO, HIGH); [cite: 144]
+    digitalWrite(led_verde, LOW);
+    digitalWrite(led_vermelho, HIGH); [cite: 144]
 
     P.begin();
     P.setIntensity(5); 
@@ -91,7 +91,7 @@ void setup() {
     Serial.println(WiFi.macAddress()); 
 
     if (esp_now_init() != ESP_OK) {
-        digitalWrite(LED_VERMELHO, HIGH);
+        digitalWrite(led_vermelho, HIGH);
         return;
     }
     esp_now_register_recv_cb(OnDataRecv); [cite: 180]
@@ -103,9 +103,9 @@ void loop() {
 
     // Detecção de Timeout (5s sem dados)
     if (currentMillis - lastRxMillis > TIMEOUT_LIMIT) {
-        if (dadosDisponiveis || digitalWrite(LED_VERMELHO) == LOW) {
-            digitalWrite(LED_VERDE, LOW); [cite: 188]
-            digitalWrite(LED_VERMELHO, HIGH); [cite: 188]
+        if (dadosDisponiveis || digitalWrite(led_vermelho) == LOW) {
+            digitalWrite(led_verde, LOW); [cite: 188]
+            digitalWrite(led_vermelho, HIGH); [cite: 188]
             Serial.println("LED VERMELHO ON – timeout de comunicação"); [cite: 173]
             P.displayText("SEM DADOS", PA_CENTER, 0, 0, PA_PRINT, PA_PRINT); [cite: 189]
             dadosDisponiveis = false;

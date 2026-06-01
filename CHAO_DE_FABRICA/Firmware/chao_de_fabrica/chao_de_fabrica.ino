@@ -21,13 +21,13 @@ uint8_t macDestino[] = {0xFC, 0x01, 0x2C, 0xD0, 0x8C, 0x34};
 
 
 // (O ESP32 de monitoramento tem q declarar exatmente IGUAL a struct
-typedef struct {
-  float    nivel;         
-  float    temperatura;   
-  float    umidade;       
-  int      luminosidade;  
-  int      presenca;      
-  uint32_t timestamp;     
+typedef struct struct_mensagem {
+  float nivel_tinta;
+  float temperatura;
+  float umidade;
+  int   luminosidade;
+  int   presenca;
+  char  timestamp[24];     
 } DadosFabrica;
 
 DadosFabrica meusDados;
@@ -90,6 +90,14 @@ void iniciarESPNOW() {
   }
 }
 
+void gerarTimestamp(char *buf, size_t len) {
+  unsigned long s = millis() / 1000;
+  unsigned long h = s / 3600;
+  unsigned long m = (s % 3600) / 60;
+  unsigned long seg = s % 60;
+  snprintf(buf, len, "1970-01-01T%02lu:%02lu:%02luZ", h, m, seg);
+}
+
 void setup() {
   Serial.begin(115200);
   delay(500);
@@ -116,27 +124,27 @@ void setup() {
 void loop() {
   Serial.println("\n=============================");
 
-  meusDados.nivel        = lerNivelTanque();
+  meusDados.nivel_tinta  = lerNivelTanque();
   meusDados.temperatura  = dht.readTemperature();
   meusDados.umidade      = dht.readHumidity();
   meusDados.luminosidade = analogRead(PIN_LDR);
   meusDados.presenca     = digitalRead(PIN_PIR);
-  meusDados.timestamp    = millis();
-
+  gerarTimestamp(meusDados.timestamp, sizeof(meusDados.timestamp));
+    
   if (isnan(meusDados.temperatura) || isnan(meusDados.umidade)) {
     Serial.println("[DHT] Erro de leitura! Usando 0.");
     meusDados.temperatura = 0.0f;
     meusDados.umidade     = 0.0f;
   }
 
-  Serial.printf("Nível do tanque: %.1f%%\n",  meusDados.nivel);
+  Serial.printf("Nível do tanque: %.1f%%\n",  meusDados.nivel_tinta);
   Serial.printf("Temperatura:     %.1f °C\n", meusDados.temperatura);
   Serial.printf("Umidade:         %.1f%%\n",  meusDados.umidade);
   Serial.printf("Luminosidade:    %d\n",       meusDados.luminosidade);
   Serial.println(meusDados.presenca ? "Presença detectada" : "Sem presença");
 
-  bool alertaCritico = (meusDados.nivel < NIVEL_ALERTA);
-
+bool alertaCritico = (meusDados.nivel_tinta < NIVEL_ALERTA);
+  
   if (alertaCritico) {
     Serial.println("Alerta! Nível de tinta baixo.");
     Serial.println("Estado: ALERTA – verificar tanque de tinta");
@@ -155,8 +163,8 @@ void loop() {
   if (resultado == ESP_OK) {
     Serial.printf("Pacote enviado: {nivel=%.1f%%, temp=%.1f°C, "
                   "umidade=%.1f%%, luz=%d, presenca=%d}\n",
-                  meusDados.nivel, meusDados.temperatura,
-                  meusDados.umidade, meusDados.luminosidade,
+            meusDados.nivel_tinta, meusDados.temperatura,
+            meusDados.umidade, meusDados.luminosidade,
                   meusDados.presenca);
   } else {
     Serial.println("Falha no envio ESP-NOW (esp_now_send retornou erro).");

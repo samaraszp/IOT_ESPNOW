@@ -34,12 +34,12 @@ DadosFabrica meusDados;
 
 bool envioOk = false;
 
-void aoEnviar(const uint8_t *mac, esp_now_send_status_t status) {
+void aoEnviar(const wifi_tx_info_t *info, esp_now_send_status_t status) {
   envioOk = (status == ESP_NOW_SEND_SUCCESS);
   if (envioOk) {
-    Serial.println("✔ Pacote enviado com sucesso via ESP-NOW.");
+    Serial.println("Pacote enviado com sucesso via ESP-NOW.");
   } else {
-    Serial.println("✘ Falha no envio ESP-NOW.");
+    Serial.println("Falha no envio ESP-NOW.");
   }
 }
 

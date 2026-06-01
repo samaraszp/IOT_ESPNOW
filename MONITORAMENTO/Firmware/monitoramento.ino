@@ -4,22 +4,22 @@
 #include <MD_MAX72xx.h>
 #include <SPI.h>
 
-// Definições de Hardware para o ESP32-S3
+// Definições
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW 
 #define MAX_DEVICES 4                     
-#define DATA_PIN  11 // MOSI
-#define CLK_PIN   12 // SCK
-#define CS_PIN    10 // SS
+#define DATA_PIN   20 // MOSI
+#define CLK_PIN   18 // SCK
+#define CS_PIN    5 // SS
 
-#define led_verde 4    
-#define led_vermelho 5 
+#define led_verde 2  
+#define led_vermelho 7
 
 MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 
-// MAC do Chão de Fábrica Autorizado (Substitua pelo real do seu grupo)
+// MAC do Chão de Fábrica Autorizado
 uint8_t macAutorizado[] = {0x7C, 0x12, 0xB3, 0x4F, 0xA2, 0x01}; 
 
-// Estrutura de Dados conforme o Edital
+// Estrutura de Dados
 typedef struct struct_mensagem {
     float nivel_tinta;       
     float temperatura;       
@@ -41,7 +41,7 @@ bool dadosDisponiveis = false;
 
 // Callback de Recepção ESPNOW
 void OnDataRecv(const esp_now_recv_info_t *recvInfo, const uint8_t *incomingData, int len) {
-    // Validação de MAC de Origem para ignorar outras equipes
+    // Validação de MAC de Origem
     for (int i = 0; i < 6; i++) {
         if (recvInfo->src_addr[i] != macAutorizado[i]) return; 
     }
@@ -53,23 +53,23 @@ void OnDataRecv(const esp_now_recv_info_t *recvInfo, const uint8_t *incomingData
     
     if (!dadosDisponiveis) {
         dadosDisponiveis = true;
-        Serial.println("LED VERDE ON – dados recebidos");
+        Serial.println("LED VERDE ON – dados recebidos"); 
     }
     
-    digitalWrite(led_verde, HIGH);
-    digitalWrite(led_vermelho, LOW);
+    digitalWrite(led_verde, HIGH); 
+    digitalWrite(led_vermelho, LOW); 
     
-    // Log de Recepção solicitado no edital
+    // Log de Recepção Exato do Edital
     Serial.printf("RX: nivel=%.0f%% temp=%.0fC umd=%.0f%% lux=%d prs=%d ts=%s\n", 
                   dadosRecebidos.nivel_tinta, dadosRecebidos.temperatura, 
                   dadosRecebidos.umidade, dadosRecebidos.luminosidade, 
-                  dadosRecebidos.presenca, dadosRecebidos.timestamp);
+                  dadosRecebidos.presenca, dadosRecebidos.timestamp); 
 
-    // Envio do JSON via Serial para a sua API Python
+    // String JSON via Serial para o Backend
     Serial.printf("JSON_DATA:{\"nivel\":%.1f,\"temp\":%.1f,\"umd\":%.1f,\"lux\":%d,\"prs\":%d,\"ts\":\"%s\"}\n",
                   dadosRecebidos.nivel_tinta, dadosRecebidos.temperatura, 
                   dadosRecebidos.umidade, dadosRecebidos.luminosidade, 
-                  dadosRecebidos.presenca, dadosRecebidos.timestamp);
+                  dadosRecebidos.presenca, dadosRecebidos.timestamp); 
 }
 
 void setup() {
@@ -77,16 +77,16 @@ void setup() {
     pinMode(led_verde, OUTPUT);
     pinMode(led_vermelho, OUTPUT);
     
-    // Estado de Alerta Inicial (esperando conexão)
+    // Estado de Alerta Inicial
     digitalWrite(led_verde, LOW);
-    digitalWrite(led_vermelho, HIGH);
+    digitalWrite(led_vermelho, HIGH); 
 
     P.begin();
     P.setIntensity(5); 
     P.displayClear();
     P.displayText("WAIT", PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
 
-    WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_STA); 
     Serial.print("MAC_MONITORAMENTO:");
     Serial.println(WiFi.macAddress()); 
 
@@ -94,51 +94,52 @@ void setup() {
         digitalWrite(led_vermelho, HIGH);
         return;
     }
-    esp_now_register_recv_cb(OnDataRecv);
+    esp_now_register_recv_cb(OnDataRecv); 
 }
 
 void loop() {
     unsigned long currentMillis = millis();
     P.displayAnimate();
 
-    // Detecção de Timeout (5 segundos sem dados)
+    // Detecção de Timeout (5s sem dados)
     if (currentMillis - lastRxMillis > TIMEOUT_LIMIT) {
-        if (dadosDisponiveis || digitalWrite(led_vermelho) == LOW) {
-            digitalWrite(led_verde, LOW);
-            digitalWrite(led_vermelho, HIGH);
-            Serial.println("LED VERMELHO ON – timeout de comunicação");
-            P.displayText("SEM DADOS", PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
+        // CORRIGIDO: Alterado de digitalWrite para digitalRead
+        if (dadosDisponiveis || digitalRead(led_vermelho) == LOW) {
+            digitalWrite(led_verde, LOW); 
+            digitalWrite(led_vermelho, HIGH); 
+            Serial.println("LED VERMELHO ON – timeout de comunicação"); 
+            P.displayText("SEM DADOS", PA_CENTER, 0, 0, PA_PRINT, PA_PRINT); 
             dadosDisponiveis = false;
         }
     } 
-    // Carrossel de Telas (Alterna a cada 2 segundos)
+    // Carrossel de Telas de 2s
     else if (currentMillis - lastDisplayMillis >= DISPLAY_INTERVAL && dadosDisponiveis) {
         lastDisplayMillis = currentMillis;
         
         switch (telaAtual) {
             case 0:
-                Serial.println("Tela -> NVL");
-                sprintf(bufferTexto, "NVL %.0f%%", dadosRecebidos.nivel_tinta);
+                Serial.println("Tela -> NVL"); 
+                sprintf(bufferTexto, "NVL %.0f%%", dadosRecebidos.nivel_tinta); 
                 P.displayText(bufferTexto, PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
                 break;
             case 1:
-                Serial.println("Tela -> TMP");
-                sprintf(bufferTexto, "TMP %.0fC", dadosRecebidos.temperatura);
+                Serial.println("Tela -> TMP"); 
+                sprintf(bufferTexto, "TMP %.0fC", dadosRecebidos.temperatura); 
                 P.displayText(bufferTexto, PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
                 break;
             case 2:
-                Serial.println("Tela -> UMD");
-                sprintf(bufferTexto, "UMD %.0f%%", dadosRecebidos.umidade);
+                Serial.println("Tela -> UMD"); 
+                sprintf(bufferTexto, "UMD %.0f%%", dadosRecebidos.umidade); 
                 P.displayText(bufferTexto, PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
                 break;
             case 3:
-                Serial.println("Tela -> LUX");
-                sprintf(bufferTexto, "LUX %d", dadosRecebidos.luminosidade);
+                Serial.println("Tela -> LUX"); 
+                sprintf(bufferTexto, "LUX %d", dadosRecebidos.luminosidade); 
                 P.displayText(bufferTexto, PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
                 break;
             case 4:
-                Serial.println("Tela -> PRS");
-                sprintf(bufferTexto, "PRS %s", (dadosRecebidos.presenca == 1) ? "ON" : "OFF");
+                Serial.println("Tela -> PRS"); 
+                sprintf(bufferTexto, "PRS %s", (dadosRecebidos.presenca == 1) ? "ON" : "OFF"); 
                 P.displayText(bufferTexto, PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
                 break;
         }

@@ -4,144 +4,317 @@
 #include <MD_MAX72xx.h>
 #include <SPI.h>
 
-// Definições de Hardware para o ESP32-S3
-#define HARDWARE_TYPE MD_MAX72XX::FC16_HW 
-#define MAX_DEVICES 4                     
-#define DATA_PIN  11 // MOSI
-#define CLK_PIN   12 // SCK
-#define CS_PIN    10 // SS
+// ======================
+// MATRIZ LED
+// ======================
 
-#define led_verde 4    
-#define led_vermelho 5 
+#define DATA_PIN 20
+#define CLK_PIN 18
+#define CS_PIN 5
 
-MD_Parola P = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
+// ======================
+// LEDs DE STATUS
+// ======================
+#define led_verde 2
+#define led_vermelho 7
 
-// MAC do Chão de Fábrica Autorizado (Substitua pelo real do seu grupo)
-uint8_t macAutorizado[] = {0x7C, 0x12, 0xB3, 0x4F, 0xA2, 0x01}; 
+// ======================
+// MATRIZ LED
+// ======================
+#define HARDWARE_TYPE MD_MAX72XX::FC16_HW
+#define MAX_DEVICES 1
 
-// Estrutura de Dados conforme o Edital
+#define CS_PIN 5
+
+MD_Parola P = MD_Parola(
+  HARDWARE_TYPE,
+  CS_PIN,
+  MAX_DEVICES
+);
+
+// ======================
+// MAC AUTORIZADO
+// ======================
+
+uint8_t macAutorizado[] = {
+  0x04, 0x83, 0x08,
+  0xab, 0xcc, 0x1c
+};
+
+// ======================
+// ESTRUTURA DE DADOS
+// ======================
 typedef struct struct_mensagem {
-    float nivel_tinta;       
-    float temperatura;       
-    float umidade;           
-    int luminosidade;        
-    int presenca;            
-    char timestamp[24];      
+  float nivel_tinta;
+  float temperatura;
+  float umidade;
+  int luminosidade;
+  int presenca;
+  char timestamp[24];
 } struct_mensagem;
 
 struct_mensagem dadosRecebidos;
 
+// ======================
+// CONTROLE
+// ======================
 unsigned long lastRxMillis = 0;
-const unsigned long TIMEOUT_LIMIT = 5000;    
-unsigned long lastDisplayMillis = 0;
-const unsigned long DISPLAY_INTERVAL = 2000; 
+const unsigned long TIMEOUT_LIMIT = 5000;
+
 int telaAtual = 0;
 char bufferTexto[32];
+
 bool dadosDisponiveis = false;
+bool timeoutExibido = false;
 
-// Callback de Recepção ESPNOW
-void OnDataRecv(const esp_now_recv_info_t *recvInfo, const uint8_t *incomingData, int len) {
-    // Validação de MAC de Origem para ignorar outras equipes
-    for (int i = 0; i < 6; i++) {
-        if (recvInfo->src_addr[i] != macAutorizado[i]) return; 
-    }
+// ======================
+// MOCK DATA
+// ======================
+bool modoMock = false;
 
-    if (len != sizeof(dadosRecebidos)) return;
-    
-    memcpy(&dadosRecebidos, incomingData, sizeof(dadosRecebidos));
-    lastRxMillis = millis(); 
-    
-    if (!dadosDisponiveis) {
-        dadosDisponiveis = true;
-        Serial.println("LED VERDE ON – dados recebidos");
-    }
-    
-    digitalWrite(led_verde, HIGH);
-    digitalWrite(led_vermelho, LOW);
-    
-    // Log de Recepção solicitado no edital
-    Serial.printf("RX: nivel=%.0f%% temp=%.0fC umd=%.0f%% lux=%d prs=%d ts=%s\n", 
-                  dadosRecebidos.nivel_tinta, dadosRecebidos.temperatura, 
-                  dadosRecebidos.umidade, dadosRecebidos.luminosidade, 
-                  dadosRecebidos.presenca, dadosRecebidos.timestamp);
+unsigned long lastMockMillis = 0;
+const unsigned long MOCK_INTERVAL = 3000;
 
-    // Envio do JSON via Serial para a sua API Python
-    Serial.printf("JSON_DATA:{\"nivel\":%.1f,\"temp\":%.1f,\"umd\":%.1f,\"lux\":%d,\"prs\":%d,\"ts\":\"%s\"}\n",
-                  dadosRecebidos.nivel_tinta, dadosRecebidos.temperatura, 
-                  dadosRecebidos.umidade, dadosRecebidos.luminosidade, 
-                  dadosRecebidos.presenca, dadosRecebidos.timestamp);
+// ======================
+// CALLBACK ESP-NOW
+// ======================
+void OnDataRecv(
+  const esp_now_recv_info_t *info,
+  const uint8_t *incomingData,
+  int len)
+{
+  if (memcmp(info->src_addr, macAutorizado, 6) != 0)
+  {
+    Serial.println("Pacote ignorado - MAC nao autorizado");
+    return;
+  }
+
+  if (len != sizeof(struct_mensagem))
+  {
+    Serial.println("Tamanho de pacote invalido");
+    return;
+  }
+
+  memcpy(
+    &dadosRecebidos,
+    incomingData,
+    sizeof(dadosRecebidos)
+  );
+
+  lastRxMillis = millis();
+  dadosDisponiveis = true;
+  timeoutExibido = false;
+
+  digitalWrite(led_verde, HIGH);
+  digitalWrite(led_vermelho, LOW);
+
+  Serial.println("Dados recebidos via ESP-NOW");
+
+  Serial.printf(
+    "JSON_DATA:{\"nivel\":%.1f,\"temp\":%.1f,\"umd\":%.1f,\"lux\":%d,\"prs\":%d,\"ts\":\"%s\"}\n",
+    dadosRecebidos.nivel_tinta,
+    dadosRecebidos.temperatura,
+    dadosRecebidos.umidade,
+    dadosRecebidos.luminosidade,
+    dadosRecebidos.presenca,
+    dadosRecebidos.timestamp
+  );
 }
 
-void setup() {
-    Serial.begin(115200);
-    pinMode(led_verde, OUTPUT);
-    pinMode(led_vermelho, OUTPUT);
-    
-    // Estado de Alerta Inicial (esperando conexão)
+// ======================
+// GERA DADOS FALSOS
+// ======================
+void gerarMockData()
+{
+  dadosRecebidos.nivel_tinta = random(20, 101);
+  dadosRecebidos.temperatura = random(18, 41);
+  dadosRecebidos.umidade = random(30, 91);
+  dadosRecebidos.luminosidade = random(100, 1000);
+  dadosRecebidos.presenca = random(0, 2);
+
+  strcpy(
+    dadosRecebidos.timestamp,
+    "2026-06-03 14:30"
+  );
+
+  lastRxMillis = millis();
+  dadosDisponiveis = true;
+
+  digitalWrite(led_verde, HIGH);
+  digitalWrite(led_vermelho, LOW);
+
+  Serial.printf(
+    "MOCK LOCAL -> nivel=%.0f%% temp=%.0fC umd=%.0f%% lux=%d prs=%d\n",
+    dadosRecebidos.nivel_tinta,
+    dadosRecebidos.temperatura,
+    dadosRecebidos.umidade,
+    dadosRecebidos.luminosidade,
+    dadosRecebidos.presenca
+  );
+
+  Serial.printf(
+    "JSON_DATA:{\"nivel\":%.1f,\"temp\":%.1f,\"umd\":%.1f,\"lux\":%d,\"prs\":%d,\"ts\":\"%s\"}\n",
+    dadosRecebidos.nivel_tinta,
+    dadosRecebidos.temperatura,
+    dadosRecebidos.umidade,
+    dadosRecebidos.luminosidade,
+    dadosRecebidos.presenca,
+    dadosRecebidos.timestamp
+  );
+}
+
+// ======================
+// SETUP
+// ======================
+void setup()
+{
+  Serial.begin(115200);
+
+  randomSeed(micros());
+
+  pinMode(led_verde, OUTPUT);
+  pinMode(led_vermelho, OUTPUT);
+
+  digitalWrite(led_verde, LOW);
+  digitalWrite(led_vermelho, HIGH);
+
+  P.begin();
+  P.setIntensity(5);
+  P.displayClear();
+
+  P.displayText(
+    "AGD",
+    PA_LEFT,
+    50,
+    0,
+    PA_SCROLL_LEFT,
+    PA_SCROLL_LEFT
+  );
+
+  WiFi.mode(WIFI_STA);
+
+  Serial.print("MAC_MONITORAMENTO:");
+  Serial.println(WiFi.macAddress());
+
+  if (esp_now_init() != ESP_OK)
+  {
+    Serial.println("Erro ao iniciar ESP-NOW");
+    return;
+  }
+
+  esp_now_register_recv_cb(OnDataRecv);
+
+  Serial.println("Sistema iniciado.");
+  Serial.println("Modo Mock Desativado.");
+}
+
+// ======================
+// LOOP
+// ======================
+void loop()
+{
+  unsigned long currentMillis = millis();
+
+  bool animacaoTerminou = P.displayAnimate();
+
+  // ======================
+  // MOCK
+  // ======================
+  if (
+    modoMock &&
+    currentMillis - lastMockMillis >= MOCK_INTERVAL
+  )
+  {
+    lastMockMillis = currentMillis;
+    gerarMockData();
+  }
+
+ if (currentMillis - lastRxMillis > TIMEOUT_LIMIT)
+{
+  if (!timeoutExibido)
+  {
     digitalWrite(led_verde, LOW);
     digitalWrite(led_vermelho, HIGH);
 
-    P.begin();
-    P.setIntensity(5); 
-    P.displayClear();
-    P.displayText("WAIT", PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
+    Serial.println(
+      "LED VERMELHO ON - timeout de comunicacao"
+    );
 
-    WiFi.mode(WIFI_STA);
-    Serial.print("MAC_MONITORAMENTO:");
-    Serial.println(WiFi.macAddress()); 
+    P.displayText(
+      "NOD",
+      PA_LEFT,
+      50,
+      0,
+      PA_SCROLL_LEFT,
+      PA_SCROLL_LEFT
+    );
 
-    if (esp_now_init() != ESP_OK) {
-        digitalWrite(led_vermelho, HIGH);
-        return;
-    }
-    esp_now_register_recv_cb(OnDataRecv);
+    dadosDisponiveis = false;
+    timeoutExibido = true;
+  }
 }
 
-void loop() {
-    unsigned long currentMillis = millis();
-    P.displayAnimate();
+  else if (dadosDisponiveis)
+{
+  if (animacaoTerminou)
+  {
+    switch (telaAtual)
+    {
+      case 0:
+        sprintf(
+          bufferTexto,
+          "NVL%.0f",
+          dadosRecebidos.nivel_tinta
+        );
+        break;
 
-    // Detecção de Timeout (5 segundos sem dados)
-    if (currentMillis - lastRxMillis > TIMEOUT_LIMIT) {
-        if (dadosDisponiveis || digitalWrite(led_vermelho) == LOW) {
-            digitalWrite(led_verde, LOW);
-            digitalWrite(led_vermelho, HIGH);
-            Serial.println("LED VERMELHO ON – timeout de comunicação");
-            P.displayText("SEM DADOS", PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
-            dadosDisponiveis = false;
-        }
-    } 
-    // Carrossel de Telas (Alterna a cada 2 segundos)
-    else if (currentMillis - lastDisplayMillis >= DISPLAY_INTERVAL && dadosDisponiveis) {
-        lastDisplayMillis = currentMillis;
-        
-        switch (telaAtual) {
-            case 0:
-                Serial.println("Tela -> NVL");
-                sprintf(bufferTexto, "NVL %.0f%%", dadosRecebidos.nivel_tinta);
-                P.displayText(bufferTexto, PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
-                break;
-            case 1:
-                Serial.println("Tela -> TMP");
-                sprintf(bufferTexto, "TMP %.0fC", dadosRecebidos.temperatura);
-                P.displayText(bufferTexto, PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
-                break;
-            case 2:
-                Serial.println("Tela -> UMD");
-                sprintf(bufferTexto, "UMD %.0f%%", dadosRecebidos.umidade);
-                P.displayText(bufferTexto, PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
-                break;
-            case 3:
-                Serial.println("Tela -> LUX");
-                sprintf(bufferTexto, "LUX %d", dadosRecebidos.luminosidade);
-                P.displayText(bufferTexto, PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
-                break;
-            case 4:
-                Serial.println("Tela -> PRS");
-                sprintf(bufferTexto, "PRS %s", (dadosRecebidos.presenca == 1) ? "ON" : "OFF");
-                P.displayText(bufferTexto, PA_CENTER, 0, 0, PA_PRINT, PA_PRINT);
-                break;
-        }
-        telaAtual = (telaAtual + 1) % 5;
+      case 1:
+        sprintf(
+          bufferTexto,
+          "TMP%.0f",
+          dadosRecebidos.temperatura
+        );
+        break;
+
+      case 2:
+        sprintf(
+          bufferTexto,
+          "UMD%.0f",
+          dadosRecebidos.umidade
+        );
+        break;
+
+      case 3:
+        sprintf(
+          bufferTexto,
+          "LUX%d",
+          dadosRecebidos.luminosidade
+        );
+        break;
+
+      case 4:
+        sprintf(
+          bufferTexto,
+          "PRS%s",
+          dadosRecebidos.presenca ?
+          "SIM" : "NAO"
+        );
+        break;
     }
+
+    Serial.print("Tela -> ");
+    Serial.println(bufferTexto);
+
+    P.displayText(
+      bufferTexto,
+      PA_LEFT,
+      50,
+      0,
+      PA_SCROLL_LEFT,
+      PA_SCROLL_LEFT
+    );
+
+    telaAtual = (telaAtual + 1) % 5;
+  }
+}
 }

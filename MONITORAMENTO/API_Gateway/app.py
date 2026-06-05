@@ -1,54 +1,64 @@
 import os
 import json
+import time
 import serial
-import threading
-from fastapi import FastAPI
 from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
 from datetime import datetime
 from dotenv import load_dotenv
 
-# Carregar as variáveis do .env
+# Carrega as configurações do .env
 load_dotenv()
 
-app = FastAPI()
-
-# Puxa os dados direto do arquivo oculto .env
 INFLUX_URL = os.getenv("INFLUX_URL")
 TOKEN = os.getenv("INFLUX_TOKEN")
 ORG = os.getenv("INFLUX_ORG")
 BUCKET = os.getenv("INFLUX_BUCKET")
 SERIAL_PORT = os.getenv("SERIAL_PORT")
 
+# Inicializa o cliente do InfluxDB
 client = InfluxDBClient(url=INFLUX_URL, token=TOKEN, org=ORG)
-write_api = client.write_api(write_precision=WritePrecision.S)
+write_api = client.write_api()
 
-def ler_porta_serial():
+print("🚀 Coletor de dados do ESP32 iniciado...")
+
+while True:
     try:
-        # Usa a porta do .env
-        ser = serial.Serial(SERIAL_PORT, 115200, timeout=1) 
-        while True:
-            linha = ser.readline().decode('utf-8', errors='ignore').strip()
-            if linha.startswith("JSON_DATA:"):
-                json_raw = linha.replace("JSON_DATA:", "")
-                dados = json.loads(json_raw)
+        # Abre a porta serial usando o gerenciador de contexto (with)
+        with serial.Serial(SERIAL_PORT, 115200, timeout=1) as ser:
+            print(f"🔌 Conectado com sucesso na porta {SERIAL_PORT}!")
+            
+            while True:
+                linha = ser.readline().decode('utf-8', errors='ignore').strip()
                 
-                point = Point("medicoes_sensor") \
-                    .field("nivel_tinta", float(dados["nivel"])) \
-                    .field("temperatura", float(dados["temp"])) \
-                    .field("umidade", float(dados["umd"])) \
-                    .field("luminosidade", int(dados["lux"])) \
-                    .field("presenca", int(dados["prs"])) \
-                    .time(datetime.utcnow(), WritePrecision.S)
+                if not linha:
+                    continue  # Aguarda novos dados
                 
-                write_api.write(bucket=BUCKET, org=ORG, record=point)
-    except Exception as e:
-        print(f"Erro serial: {e}")
-
-@app.on_event("startup")
-async def startup_event():
-    threading.Thread(target=ler_porta_serial, daemon=True).start()
-
-@app.get("/status")
-def get_status():
-    return {"status": "online"}
+                if linha.startswith("JSON_DATA:"):
+                    try:
+                        json_raw = linha.replace("JSON_DATA:", "")
+                        dados = json.loads(json_raw)
+                        
+                        # Monta o ponto de dados
+                        point = Point("medicoes_sensor") \
+                            .field("nivel_tinta", float(dados["nivel"])) \
+                            .field("temperatura", float(dados["temp"])) \
+                            .field("umidade", float(dados["umd"])) \
+                            .field("luminosidade", int(dados["lux"])) \
+                            .field("presenca", int(dados["prs"])) \
+                            .time(datetime.utcnow(), WritePrecision.S)
+                        
+                        # Grava no banco
+                        write_api.write(bucket=BUCKET, org=ORG, record=point)
+                        print(f"✅ Dados enviados ao InfluxDB: {dados}")
+                        
+                    except json.JSONDecodeError:
+                        print("⚠️ Falha ao decodificar o JSON da serial.")
+                    except Exception as e:
+                        print(f"⚠️ Erro ao salvar no InfluxDB: {e}")
+                        
+    except serial.SerialException:
+        print(f"❌ Porta {SERIAL_PORT} não encontrada ou ocupada. Tentando novamente em 5 segundos...")
+        time.sleep(5)
+    except KeyboardInterrupt:
+        print("\n👋 Coletor encerrado pelo usuário.")
+        break

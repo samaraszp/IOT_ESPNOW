@@ -19,7 +19,6 @@ const float NIVEL_ALERTA      = 20.0;
 
 uint8_t macDestino[] = {0xFC, 0x01, 0x2C, 0xD0, 0x8C, 0x34};
 
-
 // (O ESP32 de monitoramento tem q declarar exatmente IGUAL a struct
 typedef struct struct_mensagem {
   float nivel_tinta;
@@ -181,5 +180,7 @@ bool alertaCritico = (meusDados.nivel_tinta < NIVEL_ALERTA);
     digitalWrite(PIN_LED_VERM, HIGH);
   }
 
+  delay(1880); 
+}
   delay(1880); 
 }
